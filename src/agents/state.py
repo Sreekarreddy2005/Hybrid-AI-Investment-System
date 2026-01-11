@@ -1,20 +1,15 @@
-# src/agents/state.py
-from typing import TypedDict, Dict, Any, List
+from typing import TypedDict, Any
 
-class AgentState(TypedDict, total=False):
+
+class AgentState(TypedDict):
     ticker: str
-
-    # Raw data
-    market_data: Dict[str, Any]          # fundamentals from yfinance
-    news_data: List[Dict[str, Any]]      # Tavily news list
-    quant_data: str                      # quant summary string
-    quant_raw: Dict[str, Any]            # numeric + error fields
-
-    # Sentiment
-    sentiment_score: float
+    market_data: Any
+    news_data: Any
+    quant_data: str
+    quant_raw: dict
     sentiment_label: str
-
-    # Agent outputs
+    sentiment_score: float
+    rag_context: str
     bull_memo: str
     bear_memo: str
     final_report: str
