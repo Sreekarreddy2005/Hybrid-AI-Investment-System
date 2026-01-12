@@ -11,3 +11,9 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Downloaded SEC filings
+data/filings/
+
+# Cached vector stores
+data/vectorstore/

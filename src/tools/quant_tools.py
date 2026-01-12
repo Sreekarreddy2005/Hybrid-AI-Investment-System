@@ -1,145 +1,56 @@
 import numpy as np
-import yfinance as yf
 import tensorflow as tf
-import pandas as pd
-import os
-import time
-from sklearn.preprocessing import MinMaxScaler
-from langchain_core.tools import tool
+import yfinance as yf
 
-# =========================
-# CONFIG
-# =========================
+MODEL_PATH = "models/lstm_model.h5"
 LOOKBACK = 60
-MIN_REQUIRED = 20
 
-# Absolute, Streamlit-safe model path (models folder)
-MODEL_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "models", "lstm_model.h5")
-)
+try:
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+except Exception:
+    model = None
 
-# =========================
-# DATA FETCHER
-# =========================
-def _get_yfinance_data(ticker: str, max_retries: int = 3):
-    ticker = ticker.strip().upper()
 
-    for attempt in range(max_retries):
-        try:
-            data = yf.download(
-                tickers=ticker,
-                period="1y",
-                interval="1d",
-                auto_adjust=True,
-                group_by="column",
-                progress=False,
-            )
-
-            if isinstance(data, pd.DataFrame) and not data.empty:
-                if "Close" in data.columns:
-                    return data[["Close"]]
-                elif isinstance(data.columns, pd.MultiIndex):
-                    return data.xs("Close", axis=1, level=0)
-
-        except Exception:
-            time.sleep(1 + attempt)
-
-    # Fallback method
-    try:
-        hist = yf.Ticker(ticker).history(period="1y", auto_adjust=True)
-        if not hist.empty and "Close" in hist:
-            return hist[["Close"]]
-    except Exception:
-        pass
-
-    return pd.DataFrame()
-
-# =========================
-# MAIN TOOL
-# =========================
-@tool
 def get_technical_signal(ticker: str) -> dict:
-    """
-    Generates a quantitative trading signal using an LSTM-based deep learning model.
-    
-    The function:
-    - Fetches historical stock price data using yfinance
-    - Preprocesses data with MinMax scaling
-    - Uses a pre-trained LSTM model to predict the next-day price
-    - Returns a bullish or bearish signal with expected percentage change
-    
-    If data is unavailable, insufficient, or the model fails,
-    the function returns a clear error message instead of crashing.
-    """
-    ticker = ticker.strip().upper()
+    ticker = ticker.upper().strip()
 
-    # ---- Model Check ----
-    if not os.path.exists(MODEL_PATH):
-        return {
-            "error": "LSTM model not found",
-            "summary": f"Quant unavailable: model missing at {MODEL_PATH}",
-        }
-
-    # ---- Fetch Data ----
-    data = _get_yfinance_data(ticker)
-
-    if data.empty:
-        return {
-            "error": "No market data from yfinance",
-            "summary": "Quant unavailable: no price data.",
-        }
-
-    prices = data["Close"].values.flatten()
-
-    if len(prices) < MIN_REQUIRED:
-        return {
-            "error": f"Only {len(prices)} data points available",
-            "summary": "Quant unavailable: insufficient history (<20 days).",
-        }
-
-    effective_lookback = min(LOOKBACK, len(prices))
+    if model is None:
+        return {"status": "error", "message": "LSTM model not loaded"}
 
     try:
-        scaler = MinMaxScaler()
-        scaler.fit(prices.reshape(-1, 1))
+        data = yf.download(ticker, period="6mo", interval="1d", progress=False)
 
-        recent_prices = prices[-effective_lookback:].reshape(-1, 1)
-        scaled_input = scaler.transform(recent_prices)
+        if len(data) < LOOKBACK:
+            raise ValueError("Insufficient historical data")
 
-        input_data = scaled_input.reshape(1, effective_lookback, 1)
+        close = data["Close"].values
+        last_price = float(close[-1])
+        avg_60 = float(close[-LOOKBACK:].mean())
+        volatility = float(close[-LOOKBACK:].std())
+        returns_30d = ((close[-1] / close[-30]) - 1) * 100
 
-        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        prediction_scaled = model.predict(input_data, verbose=0)
+        # Normalize for LSTM
+        mean = close[-LOOKBACK:].mean()
+        std = close[-LOOKBACK:].std() + 1e-8
+        normalized = (close[-LOOKBACK:] - mean) / std
+        X = normalized.reshape(1, LOOKBACK, 1)
 
-        predicted_price = float(
-            scaler.inverse_transform(prediction_scaled)[0][0]
-        )
-        current_price = float(prices[-1])
-
-        percent_change = (
-            (predicted_price - current_price) / current_price
-        ) * 100
-
-        signal = "BULLISH" if predicted_price > current_price else "BEARISH"
-
-        summary = (
-            f"* **Deep Learning Signal:** {signal}\n"
-            f"* **Current Price:** ${current_price:.2f}\n"
-            f"* **Predicted (next day):** ${predicted_price:.2f}\n"
-            f"* **Expected Move:** {percent_change:.2f}%"
-        )
+        prediction = float(model.predict(X, verbose=0)[0][0])
+        signal = "Bullish" if prediction > 0 else "Bearish"
 
         return {
-            "error": None,
+            "status": "ok",
             "signal": signal,
-            "current_price": current_price,
-            "predicted_price": predicted_price,
-            "percent_change": percent_change,
-            "summary": summary,
+            "summary": f"LSTM predicts a {signal.lower()} outlook based on recent price action.",
+            "metrics": {
+                "last_price": last_price,
+                "avg_60": avg_60,
+                "volatility": volatility,
+                "returns_30d": returns_30d,
+                "lstm_output": prediction,
+            },
+            "price_data": data["Close"]
         }
 
     except Exception as e:
-        return {
-            "error": str(e),
-            "summary": "Quant unavailable: model inference error.",
-        }
+        return {"status": "error", "message": str(e)}

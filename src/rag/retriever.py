@@ -1,20 +1,24 @@
 from langchain_core.tools import tool
-from src.rag.loader import load_and_split_docs
-from src.rag.vectorstore import create_vectorstore
-
-FILE_PATH = "data/documents/TSLA_10K_2024.html"
-
+from src.ingestion.sec_downloader import download_latest_10k
+from src.ingestion.processor import process_filing
+from src.ingestion.indexer import build_or_load_index
 
 @tool
-def retrieve_company_documents(query: str) -> str:
+def retrieve_company_documents(ticker: str, query: str) -> str:
     """
-    Retrieves relevant context from company financial documents
-    using vector-based semantic search (RAG).
+    Automatically retrieves and indexes the latest SEC 10-K filing for a given company ticker 
+    and returns relevant document context using vector-based semantic search (RAG).
     """
-    docs = load_and_split_docs(FILE_PATH)
-    vectorstore = create_vectorstore(docs)
-
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    results = retriever.get_relevant_documents(query)
-
-    return "\n\n".join(doc.page_content for doc in results)
+    try:
+        filepath = download_latest_10k(ticker)
+        docs = process_filing(filepath)
+        vectorstore = build_or_load_index(ticker, docs)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        
+        results = retriever.get_relevant_documents(query)
+        if not results:
+            return "No relevant information found in company filings."
+        
+        return "\n\n".join([f"From 10-K: {doc.page_content[:800]}" for doc in results])
+    except Exception as e:
+        return f"RAG_UNAVAILABLE: {str(e)}"

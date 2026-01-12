@@ -1,20 +1,18 @@
-# graph.py
-from langgraph.graph import StateGraph, END
-from src.agents.state import AgentState
+from langgraph.graph import StateGraph
 from src.agents.nodes import researcher_node, bull_node, bear_node, pm_node
+from src.agents.state import AgentState
 
-workflow = StateGraph(AgentState)
+graph = StateGraph(AgentState)
 
-workflow.add_node("researcher", researcher_node)
-workflow.add_node("bull", bull_node)
-workflow.add_node("bear", bear_node)
-workflow.add_node("pm", pm_node)
+graph.add_node("researcher", researcher_node)
+graph.add_node("bull", bull_node)
+graph.add_node("bear", bear_node)
+graph.add_node("pm", pm_node)
 
-workflow.set_entry_point("researcher")
-workflow.add_edge("researcher", "bull")
-workflow.add_edge("researcher", "bear")
-workflow.add_edge("bull", "pm")
-workflow.add_edge("bear", "pm")
-workflow.add_edge("pm", END)
+graph.set_entry_point("researcher")
+graph.add_edge("researcher", "bull")
+graph.add_edge("researcher", "bear")
+graph.add_edge("bull", "pm")
+graph.add_edge("bear", "pm")
 
-app_graph = workflow.compile()
+app_graph = graph.compile()

@@ -1,15 +1,20 @@
-from typing import TypedDict, Any
+from typing import TypedDict, Dict, Any, Optional
 
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     ticker: str
-    market_data: Any
+
+    # Data
+    quant: Dict[str, Any]
+    sentiment: Dict[str, Any]
+    market_data: Dict[str, Any]
     news_data: Any
-    quant_data: str
-    quant_raw: dict
-    sentiment_label: str
-    sentiment_score: float
     rag_context: str
+
+    # Agent outputs
     bull_memo: str
     bear_memo: str
-    final_report: str
+
+    # Final decision
+    final_decision: str
+    final_memo: str

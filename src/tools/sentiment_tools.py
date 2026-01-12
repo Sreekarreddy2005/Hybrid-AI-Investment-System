@@ -1,35 +1,38 @@
-# src/tools/sentiment_tools.py
-import os
-import requests
+from langchain_community.tools.tavily_search import TavilySearchResults
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
-
-def _map_finnhub_score(score: float) -> str:
-    if score > 0.15:
-        return "Bullish"
-    elif score < -0.15:
-        return "Bearish"
-    return "Neutral"
-
-def get_news_sentiment(ticker: str) -> dict:
-    """
-    Uses Finnhub's news sentiment API to get a sentiment score/label.
-    Falls back to neutral if API fails.
-    """
-    ticker = ticker.strip().upper()
-    if not FINNHUB_API_KEY:
-        return {"score": 0.0, "label": "Neutral", "source": "Sentiment API disabled (no key)"}
-
+def get_sentiment(ticker: str) -> dict:
+    """Fetch recent news headlines and derive sentiment."""
     try:
-        url = "https://finnhub.io/api/v1/news-sentiment"
-        params = {"symbol": ticker, "token": FINNHUB_API_KEY}
-        resp = requests.get(url, params=params, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-
-        score = float(data.get("sentiment", 0.0))
-        label = _map_finnhub_score(score)
-
-        return {"score": score, "label": label, "source": "Finnhub News Sentiment"}
-    except Exception:
-        return {"score": 0.0, "label": "Neutral", "source": "Sentiment API error -> Neutral"}
+        search = TavilySearchResults(max_results=10)
+        news = search.invoke(f"{ticker} stock latest news headlines sentiment")
+        
+        positive_keywords = ["growth", "beats", "strong", "profit", "record", "expansion", "upgrade", "bullish"]
+        negative_keywords = ["decline", "miss", "weak", "loss", "downgrade", "lawsuit", "risk", "bearish", "crash"]
+        
+        score = 0
+        for item in news:
+            text = (item.get("content") or "").lower()
+            for word in positive_keywords:
+                if word in text: score += 1
+            for word in negative_keywords:
+                if word in text: score -= 1
+        
+        if score > 0:
+            sentiment = "Positive"
+        elif score < 0:
+            sentiment = "Negative"
+        else:
+            sentiment = "Neutral"
+            
+        return {
+            "sentiment": sentiment,
+            "score": score,
+            "newscount": len(news)
+        }
+    except Exception as e:
+        return {
+            "sentiment": "Neutral",
+            "score": 0,
+            "newscount": 0,
+            "error": str(e)
+        }
