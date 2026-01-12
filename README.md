@@ -1,4 +1,3 @@
-# Hybrid-AI-Investment-System
 # 🤖 Hybrid AI Investment System
 
 <div align="center">
